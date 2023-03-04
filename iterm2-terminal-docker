@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+import argparse
+import logging
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import time
+from threading import Thread
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--name", help="container name", type=str, required=True)
+parser.add_argument(
+    "--shell", help="command to start the shell", type=str, required=True
+)
+args = parser.parse_args()
+
+APP = None
+SCRIPT_DIR = "/tmp/iterm2-terminal"
+REAL_SCRIPT_DIR = "/tmp"
+DOCKER_CMD = f"{shutil.which('docker')} exec -it {args.name}"
+SPLIT_TAB_TMPL = """
+tell application "iTerm2"
+  tell current session of current window
+      split {direction} with default profile command "{cmd}"
+  end tell
+end tell
+""".strip()
+CREATE_TAB_TMPL = """
+tell application "iTerm2"
+  tell current window
+    create tab with default profile command "{cmd}"
+  end tell
+end tell
+""".strip()
+CREATE_WINDOW_TMPL = """
+tell application "iTerm2"
+  create window with default profile command "{cmd}"
+end tell
+""".strip()
+
+
+def docker_exec_cmd(cmd: str) -> str:
+    return f"{DOCKER_CMD} {cmd}"
+
+
+def start_container() -> None:
+    subprocess.call(docker_exec_cmd(args.shell), shell=True)
+    os._exit(0)
+
+
+def run_script(script_name: str, option: int = 0) -> None:
+    assert (
+        re.search(rf"^[a-zA-Z0-9_]+$", script_name) is not None
+    ), "Unexpected script path"
+    real_script_name = os.path.join(
+        REAL_SCRIPT_DIR, "iterm2-terminal-" + os.path.basename(script_name)
+    )
+    logging.debug(f"Running {real_script_name}")
+    cmd = docker_exec_cmd(f"zsh -c {shlex.quote(real_script_name)}")
+    if option == 0:
+        osascript = SPLIT_TAB_TMPL.format(direction="vertically", cmd=cmd)
+    elif option == 1:
+        osascript = SPLIT_TAB_TMPL.format(direction="horizontally", cmd=cmd)
+    elif option == 2:
+        osascript = CREATE_TAB_TMPL.format(cmd=cmd)
+    else:
+        osascript = CREATE_WINDOW_TMPL.format(cmd=cmd)
+    os.popen(f"osascript -e {shlex.quote(osascript)}")
+
+
+def start_server() -> None:
+    if not os.path.exists(SCRIPT_DIR):
+        os.mkdir(SCRIPT_DIR)
+    else:
+        for p in os.scandir(SCRIPT_DIR):
+            if p.is_file():
+                os.remove(p.path)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    logging.info("Started iterm2-terminal-docker for container: %s", args.name)
+    while True:
+        all_tmp_script_names = [p.path for p in os.scandir(SCRIPT_DIR) if p.is_file()]
+        for tmp_script_name in all_tmp_script_names:
+            script_name = os.path.basename(tmp_script_name)
+            with open(tmp_script_name, "r") as f:
+                option = int(f.read().strip())
+            os.remove(tmp_script_name)
+            try:
+                run_script(script_name, option)
+            except Exception as e:
+                logging.error(f"Failed to run {script_name}: {e}")
+        time.sleep(1)
+
+
+def main() -> None:
+    t = Thread(target=start_container)
+    t.start()
+    try:
+        start_server()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()

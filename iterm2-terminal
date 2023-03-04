@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import shlex
+import time
+
+SCRIPT_DIR = "/tmp/iterm2-terminal"
+REAL_SCRIPT_DIR = "/tmp"
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        usage='context.terminal = ["iterm2-terminal", "--option", "0"]'
+    )
+    parser.add_argument(
+        "--option",
+        help="0: vertical, 1: horizontal, 2: new window (default is 0)",
+        type=int,
+        default=0,
+    )
+    parser.add_argument("script", help="script to run", type=str)
+    args = parser.parse_args()
+    script_name = os.path.basename(args.script)
+    tmp_script_name = os.path.join(SCRIPT_DIR, script_name)
+    real_script_name = os.path.join(REAL_SCRIPT_DIR, "iterm2-terminal-" + script_name)
+    with open(tmp_script_name, "w") as f:
+        f.write(str(args.option))
+    with open(real_script_name, "w") as f:
+        f.write(
+            f"#!/bin/bash\nrm {real_script_name};cd {shlex.quote(os.getcwd())}\n{args.script}\n"
+        )
+    os.chmod(real_script_name, 0o755)
+    time.sleep(3)
+
+
+if __name__ == "__main__":
+    main()

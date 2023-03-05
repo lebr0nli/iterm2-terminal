@@ -58,7 +58,7 @@ def run_script(script_name: str, option: int = 0) -> None:
         REAL_SCRIPT_DIR, "iterm2-terminal-" + os.path.basename(script_name)
     )
     logging.debug(f"Running {real_script_name}")
-    cmd = docker_exec_cmd(f"zsh -c {shlex.quote(real_script_name)}")
+    cmd = docker_exec_cmd(f"zsh -ic {shlex.quote(real_script_name)}")
     if option == 0:
         osascript = SPLIT_TAB_TMPL.format(direction="vertically", cmd=cmd)
     elif option == 1:
